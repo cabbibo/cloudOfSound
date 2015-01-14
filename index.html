@@ -2,42 +2,96 @@
 
   <head>
     <style>
-      body{ margin: 0px; }
+      body{ 
+        margin: 0px; 
+        font-family:"GeoSans";
+        color:#fff;
+      }
+
+      @font-face {
+        font-family: "GeoSans";
+        src: url("assests/GeosansLight.ttf");
+      }
+
+      #loadText{
+
+        position:absolute;
+
+      }
+
+      #renderer{
+
+        position: absolute;
+        top:0px;
+        left:0px;
+
+      }
+
     </style>
   </head>
 
   <body>
 
-    <script src="lib/three.min.js">             </script>
-    <script src="lib/jquery.min.js">            </script>
-    <script src="lib/TrackballControls.js">     </script>
-    <script src="lib/SubdivisionModifier.js">   </script>
+    <script src="lib/three.min.js"              ></script>
+    <script src="lib/jquery.min.js"             ></script>
+    <script src="lib/leap.min.js"               ></script>
+    <script src="lib/TrackballControls.js"      ></script>
+    <script src="lib/SubdivisionModifier.js"    ></script>
+    <script src="lib/TextCreator.js"            ></script>
+    <script src="lib/AudioController.js"            ></script>
+    <script src="lib/AudioTexture.js"            ></script>
+    <script src="lib/Tween.js"                  ></script>
     
-    <script src="ShaderLoader.js"></script>
-    <script src="SiteScraper.js"></script>
+    <script src="ShaderLoader.js"               ></script>
+    <script src="SiteScraper.js"                ></script>
 
-    <script src="http://connect.soundcloud.com/sdk.js"></script>
-    <script>
+    <script src="RaycastControls.js"            ></script>
+    <script src="User.js"                      ></script>
+    <script src="Song.js"                       ></script>
+
+
+    <div id ='loadText'>loadText</div>
+   <script src="http://connect.soundcloud.com/sdk.js"></script>
+   <script>
+
+     var U;
+     var U_ID;
+     var U_FOLLOWING;
     // initialize client with app credentials
     SC.initialize({
       client_id: '2400df97862fa2c06f486af524e4f974',
-      redirect_uri: 'https://soundcloud.com/connect'
+      redirect_uri: 'http://localhost:3000'
     });
 
     // initiate auth popup
     SC.connect(function() {
-      SC.get('/me', function(me) { 
-        alert('Hello, ' + me.username); 
+      SC.get('/me', function(me){
+
+        U = me;
+
+
+        SC.get('/users/' + me.id + '/followings' , { limit:200 }, function(tracks) {
+          U_FOLLOWING = tracks;
+          onLoad();
+        });
+        
       });
     });
-  </script>
 
+
+    /*SC.get('/tracks', { q:'burial', limit: page_size, offset: page_size }, function(tracks) {
+      // second page of tracks
+      console.log( tracks );
+
+    });*/
+
+
+  </script>
 
     <script>
 
-      var scraper = new SiteScraper();
 
-
+      var frame;
       var matcap = THREE.ImageUtils.loadTexture('img/rough-aluminium.jpg');
 
       var uniforms = {
@@ -46,59 +100,131 @@
 
       }
 
-      var camera, renderer, scene , controls;
+      var audioController = new AudioController();
+
+      //audioController.mute.gain.value = 0;
+      var audio = new Audio();
       
+      var source = audioController.ctx.createMediaElementSource(audio);
+      source.connect(audioController.gain);
+      
+      
+      var tween = TWEEN;
+
+      TWEEN.origTween = TWEEN.Tween;
+      TWEEN.Tween = function (options){
+        var res = new TWEEN.origTween(options);
+        res.easing(TWEEN.Easing.Quadratic.InOut);
+        return res;
+      };
+
+      var tv1 = new THREE.Vector3();
+
+      var VR = false;
+
+      var camera, renderer, scene , controls;
+
+
+      var loaded = 0;
+      var neededToLoad = 2;
       var vs, fs;
 
       var geometry, material , light;
+
+      var controller;
+      var handL , handR;
+
+      var followings = [];
 
 
       var shaders = new ShaderLoader( 'shaders' , 'shaderChunks'   );
 
       shaders.shaderSetLoaded = function(){
-        init();
-        animate();
+        onLoad(); 
       }
 
       shaders.load( 'vs-rainbow' , 'rainbow' , 'vertex' );
       shaders.load( 'fs-rainbow' , 'rainbow' , 'fragment' );
 
+      G = {};
+      G.geometries = {
+
+        icosahedron1: new THREE.IcosahedronGeometry( 1 , 1 ),
+
+      }
+
+
+      G.materials = {
+
+        wireframe:    new THREE.MeshBasicMaterial({ wireframe: true }),
+        normal:       new THREE.MeshNormalMaterial(),
+
+        hoverMat:     new THREE.MeshBasicMaterial({ color: 0xaa77ff }),
+        selectedMat:  new THREE.MeshBasicMaterial({ color: 0xffaa77 }),
+        neutralMat:   new THREE.MeshBasicMaterial({ color: 0x999999 , wireframe: true }),
+        selectedMat:  new THREE.MeshBasicMaterial({ color: 0xffffff }),
+        playingMat:   new THREE.MeshBasicMaterial({ color: 0x77ff99 })
+
+      }
+
       function init(){
+
+        textCreator = new TextCreator( 40 );
+
 
         var w = window.innerWidth;
         var h = window.innerHeight;
 
-        camera = new THREE.PerspectiveCamera( 65 , w/h , 1 , 2000 );
-        camera.position.z = 1000;
+        camera = new THREE.PerspectiveCamera( 65 , w/h , .01 , 20 );
+        camera.position.z = 0.0001;
 
         controls = new THREE.TrackballControls( camera );
         scene = new THREE.Scene();
 
-        var modifier = new THREE.SubdivisionModifier( 3 );
+        handL = new THREE.Mesh( 
+          G.geometries.icosahedron1,
+          G.materials.wireframe.clone()
+        );
+        handL.material.color.setRGB( 1 , .2 , .2 );
+        handL.scale.multiplyScalar( .001 );
+        scene.add( handL );
 
-        geometry = new THREE.BoxGeometry( 200, 200 , 200 , 10 , 10 , 10 );
-        geometry.computeVertexNormals();
+        handR = new THREE.Mesh( 
+          G.geometries.icosahedron1,
+          G.materials.wireframe.clone()
+        );
+        handR.material.color.setRGB( .2 , .2 , 1 );
+        handR.scale.multiplyScalar( .001 );
+        scene.add( handR );
 
-        geometry.mergeVertices();
-        geometry.computeFaceNormals();
-        geometry.computeVertexNormals();
+        controlsLeft  = new RaycastControls( camera , handL.position );
+        controlsRight = new RaycastControls( camera , handR.position );
 
-        modifier.modify( geometry );
+
+
+        var hoverMat = new THREE.MeshBasicMaterial({ color: 0xaa77ff });
+        var neutralMat = new THREE.MeshBasicMaterial({ color: 0x999999 , wireframe: true });
+
+        for( var i = 0; i < U_FOLLOWING.length; i++ ){
+
+          if( U_FOLLOWING[i].track_count !== 0 ){
+            followings.push( new User( U_FOLLOWING[i] ));
+          }
+
+
+        }
+ 
+
+
+
         
-        material = new THREE.ShaderMaterial({
-
-          uniforms:       uniforms,
-          vertexShader:   shaders.vertexShaders.rainbow,
-          fragmentShader: shaders.fragmentShaders.rainbow,
-
-        });
-       
-        mesh = new THREE.Mesh( geometry, material );
-        scene.add( mesh );
+        controller = new Leap.Controller();
+        controller.connect();
 
         renderer = new THREE.WebGLRenderer();
         renderer.setSize( window.innerWidth, window.innerHeight );
 
+        renderer.domElement.id = "renderer"
         document.body.appendChild( renderer.domElement );
         window.addEventListener( 'resize', onWindowResize , false );
       }
@@ -107,10 +233,183 @@
 
         requestAnimationFrame( animate );
         controls.update();
+        updateHands();
+
+        tween.update();
+
+        for( var i = 0; i < followings.length; i++ ){
+          followings[i].update();
+        }
+        if( handL.active ) controlsLeft.update();
+        if( handR.active ) controlsRight.update();
+        audioController.update();
         renderer.render( scene , camera );
+
       }
 
-      
+
+      function updateHands(){
+
+        if( frame ){
+          oFrame = frame;
+        }else{
+          oFrame = controller.frame();
+        }
+        frame = controller.frame();
+
+        handL.active = false;
+        handR.active = false;
+
+        lHandL = false;
+        lHandR = false;
+
+        if( frame.hands[0] ){
+
+          var hand = frame.hands[0];
+          var type = hand.type;
+
+          if( type == "left" ){
+
+            setHandPosition( hand.palmPosition , handL.position );
+
+            handL.active = true;
+            lHandL = hand;
+
+          }else if( type == "right" ){
+          
+            setHandPosition( hand.palmPosition , handR.position );
+          
+            handR.active = true;
+            lHandR = hand;
+
+
+          }
+
+
+          if( frame.hands[1] ){
+
+            var hand = frame.hands[1];
+            var type = hand.type
+            if( type == "left" ){
+
+              setHandPosition( hand.palmPosition , handL.position );
+              
+              handL.active = true;
+              lHandL = hand;
+
+
+            }else if( type == "right" ){
+            
+              setHandPosition( hand.palmPosition , handR.position );
+          
+              handR.active = true;
+              lHandR = hand;
+
+ 
+
+            }
+
+          }
+
+
+        }
+
+
+        if( handL.active ){
+
+          var oHand = false;
+          if( oFrame.hands[0] ){
+            if( oFrame.hands[0].type == 'left' ){
+              oHand = oFrame.hands[0];
+            }
+          }
+
+          if( oFrame.hands[1] ){
+            if( oFrame.hands[1].type =='left'){
+              oHand = oFrame.hands[0];
+            }
+          }
+
+          if( oHand ){
+
+            if( oHand.pinchStrength < .5 && lHandL.pinchStrength >= .5 ){
+              controlsLeft._down();
+            }
+
+            if( oHand.pinchStrength > .5 && lHandL.pinchStrength <= .5 ){
+              controlsLeft._up();
+            }
+
+          }
+
+        }
+
+
+        if( handR.active ){
+
+          var oHand = false;
+          if( oFrame.hands[0] ){
+            if( oFrame.hands[0].type == 'right' ){
+              oHand = oFrame.hands[0];
+            }
+          }
+
+          if( oFrame.hands[1] ){
+            if( oFrame.hands[1].type =='right'){
+              oHand = oFrame.hands[0];
+            }
+          }
+
+          if( oHand ){
+
+            if( oHand.pinchStrength < .5 && lHandR.pinchStrength >= .5 ){
+              controlsRight._down();
+            }
+
+            if( oHand.pinchStrength > .5 && lHandR.pinchStrength <= .5 ){
+              controlsRight._up();
+            }
+
+          }
+
+        }
+     
+
+      }
+
+      function leapToScene( position  ){
+
+        var p =  position;  
+        return [ 
+          p[0] * .001,
+          p[1] * .001,
+          p[2] * .001
+        ]
+
+      }
+
+      function setHandPosition( leapPos ,  threePos ){
+
+        var p = leapToScene( leapPos );
+        
+        if( VR == true ){
+          
+          tv1.set( -p[0] , -p[2] , -p[1] );
+          threePos.copy( camera.position );
+          tv1.applyQuaternion( camera.quaternion );
+          threePos.add( tv1 );
+
+        }else{
+
+          threePos.copy( camera.position );
+          tv1.set( p[0] , p[1] -.3 , p[2] - .3 );
+          tv1.applyQuaternion( camera.quaternion );
+          threePos.add( tv1 );
+
+        }
+
+
+      }
        // Resets the renderer to be the proper size
       function onWindowResize(){
 
@@ -122,6 +421,22 @@
       }
 
 
+      function onLoad(){
+
+        loaded ++;
+        if( loaded == neededToLoad ){
+
+          init();
+          animate();
+
+        }
+
+        if( loaded > neededToLoad ){
+
+          console.log('MASSIVE PROBABLS' );
+
+        }
+      }
 
     </script>
 
