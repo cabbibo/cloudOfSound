@@ -41,7 +41,11 @@
     <script src="lib/AudioController.js"            ></script>
     <script src="lib/AudioTexture.js"            ></script>
     <script src="lib/Tween.js"                  ></script>
-    
+
+    <script src = "lib/VREffect.js"               ></script>
+    <script src = "lib/VRControls.js"             ></script>
+
+
     <script src="ShaderLoader.js"               ></script>
     <script src="SiteScraper.js"                ></script>
 
@@ -106,7 +110,7 @@
       var audio = new Audio();
       
       var source = audioController.ctx.createMediaElementSource(audio);
-      source.connect(audioController.gain);
+      source.connect(audioController.ctx.destination);
       
       
       var tween = TWEEN;
@@ -120,7 +124,7 @@
 
       var tv1 = new THREE.Vector3();
 
-      var VR = false;
+      var VR = true;
 
       var camera, renderer, scene , controls;
 
@@ -175,18 +179,54 @@
         var w = window.innerWidth;
         var h = window.innerHeight;
 
-        camera = new THREE.PerspectiveCamera( 65 , w/h , .01 , 20 );
+        camera = new THREE.PerspectiveCamera( 75 , w/h , .01 , 20 );
         camera.position.z = 0.0001;
 
         controls = new THREE.TrackballControls( camera );
         scene = new THREE.Scene();
+
+        
+
+        
+        controller = new Leap.Controller();
+        controller.connect();
+
+        renderer = new THREE.WebGLRenderer( { antialias: true } );
+
+        renderer.autoClear = false;
+      //  renderer.setSize( window.innerWidth, window.innerHeight );
+
+        renderer.domElement.id = "renderer"
+        document.body.appendChild( renderer.domElement );
+
+        window.addEventListener( 'resize', onWindowResize , false );
+		document.body.addEventListener( 'dblclick', onDoubleClick , false );
+
+        document.body.addEventListener("keydown", onKeyDown, true);
+
+        
+        // VR
+        if( VR == true ){
+
+          controls = new THREE.VRControls( camera );
+
+          effect = new THREE.VREffect( renderer );
+          effect.setSize( window.innerWidth, window.innerHeight );
+
+        }else{
+
+        renderer.setSize( window.innerWidth, window.innerHeight );
+
+        }
+
+
 
         handL = new THREE.Mesh( 
           G.geometries.icosahedron1,
           G.materials.wireframe.clone()
         );
         handL.material.color.setRGB( 1 , .2 , .2 );
-        handL.scale.multiplyScalar( .001 );
+        handL.scale.multiplyScalar( .01 );
         scene.add( handL );
 
         handR = new THREE.Mesh( 
@@ -194,12 +234,11 @@
           G.materials.wireframe.clone()
         );
         handR.material.color.setRGB( .2 , .2 , 1 );
-        handR.scale.multiplyScalar( .001 );
+        handR.scale.multiplyScalar( .01 );
         scene.add( handR );
 
         controlsLeft  = new RaycastControls( camera , handL.position );
         controlsRight = new RaycastControls( camera , handR.position );
-
 
 
         var hoverMat = new THREE.MeshBasicMaterial({ color: 0xaa77ff });
@@ -216,17 +255,6 @@
  
 
 
-
-        
-        controller = new Leap.Controller();
-        controller.connect();
-
-        renderer = new THREE.WebGLRenderer();
-        renderer.setSize( window.innerWidth, window.innerHeight );
-
-        renderer.domElement.id = "renderer"
-        document.body.appendChild( renderer.domElement );
-        window.addEventListener( 'resize', onWindowResize , false );
       }
 
       function animate(){
@@ -243,7 +271,13 @@
         if( handL.active ) controlsLeft.update();
         if( handR.active ) controlsRight.update();
         audioController.update();
-        renderer.render( scene , camera );
+
+
+        if( VR == true ){
+          effect.render( scene, camera );
+        }else{
+          renderer.render( scene , camera );
+        }
 
       }
 
@@ -381,9 +415,9 @@
 
         var p =  position;  
         return [ 
-          p[0] * .001,
-          p[1] * .001,
-          p[2] * .001
+          p[0] * .01,
+          p[1] * .01,
+          p[2] * .01
         ]
 
       }
@@ -417,6 +451,8 @@
         camera.updateProjectionMatrix();
 
         renderer.setSize( window.innerWidth, window.innerHeight );
+        effect.setSize( window.innerWidth , window.innerHeight );
+        
 
       }
 
@@ -436,6 +472,21 @@
           console.log('MASSIVE PROBABLS' );
 
         }
+      }
+
+      	/*
+		Listen for keyboard event and zero positional sensor on appropriate keypress.
+		*/
+	  function onKeyDown(event) {
+	    event.preventDefault();
+
+	    if (event.keyCode == 90) { // z
+	    	controls.zeroSensor();
+	    }
+	  };
+
+      function onDoubleClick() {
+        effect.setFullScreen( true );
       }
 
     </script>

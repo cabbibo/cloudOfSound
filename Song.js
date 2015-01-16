@@ -86,11 +86,13 @@ Song.prototype.select = function(){
 
 Song.prototype.play = function(){
 
+  console.log( 'ABOUT TO PLAY' );
 
   this.user.stopAllSongs();
 
+  console.log('STOPPING' )
   audio.src = this.url;
-  source.mediaElement.play();
+  source.mediaElement.play( 0 );
 
   this.mesh.material = this.mesh.playingMat;
   this.mesh.materialNeedsUpdate = true;
@@ -100,8 +102,10 @@ Song.prototype.play = function(){
 
   this.playing = true;
 
+  console.log('PLAYINGS' )
 
 
+  console.log( source );
   //songInfo.innerHTML = this.artist + "  -  " +this.title 
 
 }
@@ -113,7 +117,9 @@ Song.prototype.stop = function(){
     
   this.title.material.opacity = .2;
 
+  console.log('ABOUT TO PAUSE');
   this.playing = false;
-  source.mediaElement.pause();
+  source.mediaElement.pause(0);
+  console.log('PAUSED');
 
 }
